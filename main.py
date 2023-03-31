@@ -5,15 +5,15 @@ from machine import ADC, Pin
 class Motor:
     def __init__(self, mid, dir1, dir2, pwm_pin):
         self.id = mid
-        self.dir1 = dir1
-        self.dir2 = dir2
+        self.dir1 = Pin(dir1, Pin.OUT)
+        self.dir2 = Pin(dir2, Pin.OUT)
         self.pos = 0
         self.target_pos = 0
         self.dir = MOTOR_OFF
-        self.speed = 1000
-        self.pwm = machine.PWM(pwm_pin)
+        self.speed = 30000
+        self.pwm = machine.PWM(Pin(pwm_pin))
         self.pwm.freq(500)
-        self.pwm.duty_u16(self.speed)
+
         self.state = 0
 
     def move_to(self, target):
@@ -36,15 +36,17 @@ class Motor:
         self.pos = cnts
 
     def update(self, cnts):
+        self.pwm.duty_u16(self.speed)
+        self.dir1.value(self.dir[0])
+        self.dir2.value(self.dir[1])
         self.update_pos(cnts)
         if self.state == 2:
             if abs(self.pos - self.target_pos) < 10:
                 self.stop()
 
 
-resistorPin = Pin(17, Pin.IN, Pin.PULL_DOWN)
+resistorPin = Pin(26, Pin.IN, Pin.PULL_DOWN)
 fsrADC = ADC(resistorPin)
-
 
 hallMAid = 5
 hallMBid = 6
@@ -52,7 +54,6 @@ hallSAid = 7
 hallSBid = 8
 cntM = 0
 cntS = 0
-
 
 hallMA = Pin(hallMAid, Pin.IN)
 hallMB = Pin(hallMBid, Pin.IN)
@@ -86,12 +87,16 @@ motorMdir = MOTOR_OFF
 motorSdir = MOTOR_OFF
 POS_START = 0
 motorM = Motor(0, 10, 11, 12)
-motorS = Motor(0, 13, 14, 15)
-FSR_THRESHOLD = (0.8*65535)
+motorS = Motor(1, 13, 14, 15)
+FSR_THRESHOLD = (0.8 * 65535)
+motorM.move_to(-800)
 while True:
     force = fsrADC.read_u16()
+
+    print(motorM.pos)
     if force > FSR_THRESHOLD:
         motorM.stop()
         motorS.stop()
     motorM.update(cntM)
     motorS.update(cntS)
+
