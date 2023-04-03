@@ -80,20 +80,20 @@ def encode_S(pin: Pin):
 hallMA.irq(trigger=Pin.IRQ_FALLING, handler=encode_M)
 hallSA.irq(trigger=Pin.IRQ_FALLING, handler=encode_S)
 
-MOTOR_CW = [1, 0]
-MOTOR_CCW = [0, 1]
+MOTOR_CCW = [1, 0]
+MOTOR_CW = [0, 1]
 MOTOR_OFF = [0, 0]
 motorMdir = MOTOR_OFF
 motorSdir = MOTOR_OFF
 POS_START = 0
 motorM = Motor(0, 10, 11, 12)
-motorS = Motor(1, 13, 14, 15)
+motorS = Motor(1, 13, 14, 16)
 FSR_THRESHOLD = (0.8 * 65535)
-motorM.move_to(-800)
+motorM.move_to(800)
+motorS.move_to(800)
 while True:
+    print(cntM, cntS)
     force = fsrADC.read_u16()
-
-    print(motorM.pos)
     if force > FSR_THRESHOLD:
         motorM.stop()
         motorS.stop()
