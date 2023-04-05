@@ -30,17 +30,20 @@ class A4988Stepper:
         self.dir = dir
         self.dir_pin.value(dir)
         self.speed = speed
-        self.time_between_steps = 1000 * self.speed * self.steps_per_rev / 60
+        self.time_between_steps = 1
         self.moving = True
         self.time_next_step = time.ticks_ms()
 
     def update(self):
         if self.moving:
             if time.ticks_diff(time.ticks_ms(), self.time_next_step) > 0:
+                print("Did a step")
                 self.step_pin.value(1)
-                time.sleep_us(3)
+                time.sleep_us(5)
                 self.step_pin.value(0)
+                
                 self.time_next_step = time.ticks_add(time.ticks_ms(), self.time_between_steps)
+                #print(time.ticks_ms(), self.time_next_step)
 
 
 class DCMotor:
@@ -51,13 +54,16 @@ class DCMotor:
         self.pos = 0
         self.target_pos = 0
         self.dir = MOTOR_OFF
-        self.speed = 30000
+        self.speed = 63000
         self.pwm = machine.PWM(Pin(pwm_pin))
         self.pwm.freq(500)
 
         self.state = 0
 
     def move_to(self, target):
+        """
+        :param target: a negative target retracts the compressor plate, while a positive target extends it
+        """
         self.target_pos = target
         if (self.pos - self.target_pos) > 0:
             self.dir = MOTOR_CW
@@ -87,12 +93,13 @@ class DCMotor:
 
 
 resistorPin = Pin(26, Pin.IN, Pin.PULL_DOWN)
+resistorPower = Pin(25, Pin.OUT)
 fsrADC = ADC(resistorPin)
 
-hallMAid = 5
-hallMBid = 6
-hallSAid = 7
-hallSBid = 8
+hallMAid = 19
+hallMBid = 18
+hallSAid = 20
+hallSBid = 21
 cntM = 0
 cntS = 0
 
@@ -128,16 +135,25 @@ motorMdir = MOTOR_OFF
 motorSdir = MOTOR_OFF
 POS_START = 0
 motorM = DCMotor(0, 10, 11, 12)
-motorS = DCMotor(1, 13, 14, 16)
-FSR_THRESHOLD = (0.8 * 65535)
-motorM.move_to(800)
-motorS.move_to(800)
+motorS = DCMotor(1, 13, 14, 15)
+stepper = A4988Stepper(0, 16, 17, 7, 200)
+FSR_THRESHOLD = (0.8 * 1024)
+motorM.move_to(10000)
+motorS.move_to(10000)
+resistorPower.value(1)
+#stepper.enable()
+#stepper.move(1, 200)
+cnt = 0
+prev_force = 1024
 while True:
-    print(cntM, cntS)
-    force = fsrADC.read_u16()
-    if force > FSR_THRESHOLD:
-        motorM.stop()
-        motorS.stop()
+    #stepper.update()
+    #print(cntM, cntS)
+    raw_force = fsrADC.read_u16()
+    smooth_force = 0.995 * prev_force + 0.005 * raw_force
+    prev_force = smooth_force
+    if cnt % 100 == 0:
+        print(smooth_force)
+    cnt += 1
     motorM.update(cntM)
     motorS.update(cntS)
 
