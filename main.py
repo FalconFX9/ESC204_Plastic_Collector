@@ -34,19 +34,19 @@ class A4988Stepper:
         self.dir = dir
         self.dir_pin.value(dir)
         self.speed = speed
-        self.time_between_steps = 1
+        self.time_between_steps = int(1/(speed*self.steps_per_rev / (60*1000*1000)))
         self.moving = True
         self.time_next_step = time.ticks_ms()
 
     def update(self):
         if self.moving:
-            if time.ticks_diff(time.ticks_ms(), self.time_next_step) > 0:
+            if time.ticks_diff(time.ticks_us(), self.time_next_step) > 0:
                 # print("Did a step")
                 self.step_pin.value(1)
                 time.sleep_us(5)
                 self.step_pin.value(0)
                 
-                self.time_next_step = time.ticks_add(time.ticks_ms(), self.time_between_steps)
+                self.time_next_step = time.ticks_add(time.ticks_us(), self.time_between_steps)
                 # print(time.ticks_ms(), self.time_next_step)
 
 
@@ -103,6 +103,8 @@ class DCMotor:
 resistorPin = Pin(26, Pin.IN, Pin.PULL_DOWN)
 resistorPower = Pin(25, Pin.OUT)
 fsrADC = ADC(resistorPin)
+ledPin = Pin(6, Pin.OUT)
+buttonPin = Pin(27, Pin.IN, Pin.PULL_UP)
 
 hallMAid = 19
 hallMBid = 18
@@ -146,7 +148,7 @@ hallMA.irq(trigger=Pin.IRQ_FALLING, handler=encode_M)
 hallSA.irq(trigger=Pin.IRQ_FALLING, handler=encode_S)
 
 # Define some useful constansts
-FSR_THRESHOLD = (0.8 * 1024)  # Defines the force threshold at below which the channel is considered full
+FSR_THRESHOLD = (850)  # Defines the force threshold at below which the channel is considered full
 MOTOR_CCW = [1, 0]
 MOTOR_CW = [0, 1]
 MOTOR_OFF = [0, 0]
@@ -159,24 +161,63 @@ motorM = DCMotor(0, 10, 11, 12)
 motorS = DCMotor(1, 13, 14, 15)
 stepper = A4988Stepper(0, 16, 17, 7, 200)
 
-motorM.move_to(10000)
-motorS.move_to(10000)
+#motorM.move_to(10000)
+#motorS.move_to(10000)
 resistorPower.value(1)
-#stepper.enable()
-#stepper.move(1, 200)
+stepper.enable()
+stepper.move(0, 300)
 cnt = 0
-prev_force = 1024
-
+prev_force = 0
+state = 0
+ledPin.value(0)
 # Main loop
 while True:
-
-    #print(cntM, cntS)
     raw_force = fsrADC.read_u16()
-    smooth_force = 0.995 * prev_force + 0.005 * raw_force  # as the sensor data is very noisy, apply exponential smoothing
+    smooth_force = 0.999 * prev_force + 0.001 * raw_force  # as the sensor data is very noisy, apply exponential smoothing
     prev_force = smooth_force
-    if cnt % 100 == 0:
-        print(smooth_force)
-    cnt += 1
+    #print(buttonPin.value())
+    if state == 0 and buttonPin.value() == 0:
+        motorM.move_to(-25000)
+        motorS.move_to(-25000)
+        state = 1
+        
+    if state == 1 and motorM.dir == MOTOR_OFF and motorS.dir == MOTOR_OFF:
+        state = 2
+        
+    if state == 1 and smooth_force > FSR_THRESHOLD:
+        ledPin.value(1)
+        motorM.stop()
+        motorS.stop()
+        stepper.stop()
+        state = 4
+    
+    if state == 2:
+        #time.sleep_ms(1000)
+        motorM.move_to(0)
+        motorS.move_to(0)
+        state = 3
+        
+    if (state == 3 or state == 5) and motorM.dir == MOTOR_OFF and motorS.dir == MOTOR_OFF:
+        if state == 5:
+            stepper.move(0, 300)
+        state = 0
+        
+    if state == 4 and buttonPin.value() == 0:
+        motorM.move_to(0)
+        motorS.move_to(0)
+        ledPin.value(0)
+        state = 5
+    
+    #print(cntM, cntS)
+
+    
+    #if cnt % 100 == 0:
+    #    print(state, cntM, cntS, smooth_force)
+    
+    #cnt += 1
+    
+    #if cnt > 10000:
+    #    cnt = 0
 
     # Run motor control loop
     motorM.update(cntM)
