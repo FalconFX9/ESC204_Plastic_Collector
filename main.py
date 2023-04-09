@@ -18,7 +18,7 @@ class A4988Stepper:
         self.moving = False
         self.speed = 0
         self.time_between_steps = 0
-        self.time_next_step = time.ticks_ms()
+        self.time_next_step = time.ticks_us()
         self.enable()
 
     def enable(self):
@@ -100,12 +100,17 @@ class DCMotor:
                 self.stop()
 
 
+# Force Sensing Resistor Pins and ADC
 resistorPin = Pin(26, Pin.IN, Pin.PULL_DOWN)
-resistorPower = Pin(25, Pin.OUT)
+resistorPower = Pin(22, Pin.OUT)
 fsrADC = ADC(resistorPin)
+
+# Define LED output Pin
 ledPin = Pin(6, Pin.OUT)
+# Define push-button Pin
 buttonPin = Pin(27, Pin.IN, Pin.PULL_UP)
 
+# Define Hall Effect Encoder output Pins for both DC Motors
 hallMAid = 19
 hallMBid = 18
 hallSAid = 20
@@ -161,63 +166,57 @@ motorM = DCMotor(0, 10, 11, 12)
 motorS = DCMotor(1, 13, 14, 15)
 stepper = A4988Stepper(0, 16, 17, 7, 200)
 
-#motorM.move_to(10000)
-#motorS.move_to(10000)
+# Enable FSR, Stepper, and keep LED OFF
 resistorPower.value(1)
 stepper.enable()
+ledPin.value(0)
+
+# Start running stepper motor @300 RPM
 stepper.move(0, 300)
+
+# Some useful variables
 cnt = 0
 prev_force = 0
 state = 0
-ledPin.value(0)
+
 # Main loop
 while True:
+    # Get data from FSR
     raw_force = fsrADC.read_u16()
     smooth_force = 0.999 * prev_force + 0.001 * raw_force  # as the sensor data is very noisy, apply exponential smoothing
     prev_force = smooth_force
-    #print(buttonPin.value())
-    if state == 0 and buttonPin.value() == 0:
+
+    if state == 0 and buttonPin.value() == 0:  # If in default state and button is pressed, extend pusher platform
         motorM.move_to(-25000)
         motorS.move_to(-25000)
         state = 1
         
-    if state == 1 and motorM.dir == MOTOR_OFF and motorS.dir == MOTOR_OFF:
+    if state == 1 and motorM.dir == MOTOR_OFF and motorS.dir == MOTOR_OFF:  # Check if platform is fully extended
         state = 2
         
-    if state == 1 and smooth_force > FSR_THRESHOLD:
+    if state == 1 and smooth_force > FSR_THRESHOLD:  # Stop all motors and turn on LED if FSR detects plastic
         ledPin.value(1)
         motorM.stop()
         motorS.stop()
         stepper.stop()
         state = 4
     
-    if state == 2:
+    if state == 2:  # If nothing was detected, return pusher plate to home position
         #time.sleep_ms(1000)
         motorM.move_to(0)
         motorS.move_to(0)
         state = 3
         
-    if (state == 3 or state == 5) and motorM.dir == MOTOR_OFF and motorS.dir == MOTOR_OFF:
+    if (state == 3 or state == 5) and motorM.dir == MOTOR_OFF and motorS.dir == MOTOR_OFF:  # Restore default state
         if state == 5:
             stepper.move(0, 300)
         state = 0
         
-    if state == 4 and buttonPin.value() == 0:
+    if state == 4 and buttonPin.value() == 0:  # Return platform to home position after plastic has been detected
         motorM.move_to(0)
         motorS.move_to(0)
         ledPin.value(0)
         state = 5
-    
-    #print(cntM, cntS)
-
-    
-    #if cnt % 100 == 0:
-    #    print(state, cntM, cntS, smooth_force)
-    
-    #cnt += 1
-    
-    #if cnt > 10000:
-    #    cnt = 0
 
     # Run motor control loop
     motorM.update(cntM)
